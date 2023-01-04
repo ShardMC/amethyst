@@ -43,4 +43,5 @@ bin/
 .DS_Store
 
 ### Custom ###
-src/main/resources/META-INF/**.jar
+src/main/resources/META-INF/libraries/*.jar
+src/main/resources/META-INF/versions/*.jar
