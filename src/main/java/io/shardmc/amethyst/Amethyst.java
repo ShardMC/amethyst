@@ -1,25 +1,26 @@
 package io.shardmc.amethyst;
 
-import java.util.ArrayList;
-import java.util.List;
+import io.shardmc.echo.core.Echo;
+
+import java.io.IOException;
+import java.net.URL;
+import java.net.URLClassLoader;
 
 public class Amethyst {
 
-    public static void main(String[] args) {
-        Amethyst.run(new ArrayList<>(List.of(args)));
-    }
+    public static void main(String[] args) throws IOException {
+        Loader.prepare();
+        Loader.extract();
 
-    private static void run(List<String> argv) {
-        /*try {
-            Loader.run(() -> {
-                try {
-                    Loader.getClassLoader();
-                    //Echo.prepare();
-                    Util.getMain().invoke((Object) Util.toArray(argv));
-                } catch (Throwable t) { Thrower.INSTANCE.sneakyThrow(t); }
-            });
-        } catch (Exception exception) {
-            exception.printStackTrace();
-        }*/
+        ClassLoader classLoader = new URLClassLoader(
+                Loader.getURLS().toArray(new URL[0]), Echo.getClassLoader()
+        );
+
+        Thread.currentThread().setContextClassLoader(classLoader);
+
+        Echo.load("shard");
+        Echo.finish();
+
+        Loader.run(classLoader, args);
     }
 }

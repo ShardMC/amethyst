@@ -1,9 +1,8 @@
 package io.shardmc.amethyst;
 
-import java.io.*;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -16,8 +15,6 @@ import java.util.stream.Stream;
 
 public class Util {
 
-    private static final String mainClassName = "net.minecraft.server.Main";
-
     private static final MessageDigest digest = Util.createDigest();
 
     public static MessageDigest createDigest() {
@@ -29,11 +26,7 @@ public class Util {
         }
     }
 
-    public static MethodHandle getMain() throws ClassNotFoundException, NoSuchMethodException, IllegalAccessException {
-        Class<?> mainClass = Class.forName(Util.mainClassName, true, Loader.getClassLoader());
-        return MethodHandles.lookup().findStatic(mainClass, "main", MethodType.methodType(void.class, String[].class)).asFixedArity();
-    }
-
+    @SuppressWarnings("all")
     public static String getHash(InputStream stream) throws IOException {
         stream.transferTo(new DigestOutputStream(OutputStream.nullOutputStream(), digest));
         return Util.byteToHex(digest.digest());
@@ -49,17 +42,6 @@ public class Util {
         return result.toString();
     }
 
-    public static ByteArrayOutputStream read(InputStream stream) throws IOException {
-        ByteArrayOutputStream result = new ByteArrayOutputStream();
-        byte[] buffer = new byte[1024];
-
-        for (int length; (length = stream.read(buffer)) != -1; ) {
-            result.write(buffer, 0, length);
-        }
-
-        return result;
-    }
-
     public static Path[] listFiles(Path resource) throws IOException {
         try (Stream<Path> list = Files.list(resource)) {
             return list.toArray(Path[]::new);
@@ -70,6 +52,7 @@ public class Util {
         return Util.listFiles(Paths.get(Util.getResource(resource)));
     }
 
+    @SuppressWarnings("all")
     public static URI getResource(String resource) {
         return Util.safeToUri(Util.class.getResource(resource));
     }

@@ -1,164 +1,106 @@
 package io.shardmc.amethyst;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.security.DigestOutputStream;
-import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public class Loader {
 
-    private static URLClassLoader classLoader;
+    private static final List<URL> URLS = new ArrayList<>();
+    private static final HashMap<String, String> REF = new HashMap<>();
 
-    public static void initClassLoader(ClassLoader classLoader) {
-        Loader.classLoader = new URLClassLoader(Loader.extractFiles(), classLoader);
+    public static void prepare() throws IOException {
+        for (Path file : Util.listFiles("/META-INF/meta/")) {
+            Loader.REF.put(file.getFileName().toString().replace(".meta", ""), Files.readString(file));
+        }
     }
 
-    public static URLClassLoader getClassLoader() {
-        return Loader.classLoader;
+    public static List<URL> extract(String subdir, String outputDir) throws IOException {
+        Path dir = Paths.get(outputDir);
+        if (!Files.exists(dir)) {
+            Files.createDirectory(dir);
+        }
+
+        List<URL> urls = new ArrayList<>();
+        for (Path file : Util.listFiles("/META-INF/" + subdir)) {
+            String hash = Loader.REF.get(file.getFileName().toString());
+            Path output = dir.resolve(file.getFileName());
+
+            System.out.println("Extracting: " + file.getFileName() + " to: " + output);
+
+            try(InputStream inputStream = Files.newInputStream(file)) {
+                if (Files.exists(output)) {
+
+                    String actualHash = Util.getHash(inputStream);
+                    if (actualHash.equalsIgnoreCase(hash)) {
+                        inputStream.close();
+
+                        urls.add(output.toUri().toURL());
+                        continue;
+                    }
+
+                    System.out.printf("Expected file %s to have hash %s, but got %s%n", file, hash, actualHash);
+                }
+
+                Files.copy(inputStream, output);
+            }
+
+            urls.add(output.toUri().toURL());
+        }
+
+        return urls;
+    }
+
+    public static List<URL> extract(String subdir) throws IOException {
+        return Loader.extract(subdir, subdir);
+    }
+
+    public static List<URL> readFrom(String subdir) throws IOException {
+        Path subdirPath = Paths.get(subdir);
+        if (!Files.exists(subdirPath)) {
+            Files.createDirectory(subdirPath);
+        }
+
+        List<URL> urls = new ArrayList<>();
+        for(Path file : Util.listFiles(subdirPath)) {
+            urls.add(file.toUri().toURL());
+        }
+
+        return urls;
+    }
+
+    public static void extract() throws IOException {
+        List<URL> urls = new ArrayList<>();
+        urls.addAll(Loader.extract("libraries"));
+        urls.addAll(Loader.extract("versions"));
+        urls.addAll(Loader.readFrom("modules"));
+
+        Loader.URLS.addAll(urls);
     }
 
     public static void run(ClassLoader classLoader, String[] args) {
-        Loader.initClassLoader(classLoader);
-
         Thread thread = new Thread(() -> {
             try {
-                Util.getMain().invoke((Object) args);
-            } catch (Throwable t) { Thrower.INSTANCE.sneakyThrow(t); }
+                Class<?> mainClass = Class.forName("net.minecraft.server.Main", true, classLoader);
+                MethodHandles.lookup().findStatic(
+                        mainClass, "main", MethodType.methodType(void.class, String[].class)
+                ).asFixedArity().invoke((Object) args);
+            } catch (Throwable t) { Thrower.getInstance().sneakyThrow(t); }
         }, "ServerMain");
-
-        thread.setContextClassLoader(Loader.getClassLoader());
+        thread.setContextClassLoader(classLoader);
         thread.start();
     }
 
-    public static URL[] extractFiles() {
-        try {
-            String repoDir = System.getProperty("bundlerRepoDir", "");
-            Path outputDir = Paths.get(repoDir);
-            Files.createDirectories(outputDir);
-
-            List<URL> extractedUrls = new ArrayList<>();
-            Loader.readAndExtractDir("versions", outputDir, extractedUrls);
-            Loader.readAndExtractDir("libraries", outputDir, extractedUrls);
-            Loader.readFrom("modules", outputDir, extractedUrls);
-
-            return extractedUrls.toArray(new URL[0]);
-        } catch (Exception exception) {
-            exception.printStackTrace(System.out);
-            System.out.println("Failed to extract server libraries, exiting");
-            System.exit(-1);
-        }
-
-        return null;
-    }
-
-    private static void readFrom(String subdir, Path outputDir, List<URL> extractedUrls) {
-        Path subdirPath = outputDir.resolve(subdir);
-        try {
-            for(File file : subdirPath.toFile().listFiles()) {
-                extractedUrls.add(file.toURI().toURL());
-            }
-        } catch (Exception ignored) { }
-    }
-
-    private static <T> T readResource(String resource, ResourceParser<T> parser) throws Exception {
-        String fullPath = "/META-INF/" + resource;
-        InputStream is = Loader.class.getResourceAsStream(fullPath);
-        try {
-            if (is == null)
-                throw new IllegalStateException("Resource " + fullPath + " not found");
-            T t = parser.parse(new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8)));
-            is.close();
-            return t;
-        } catch (Exception throwable) {
-            if(is != null) {
-                try {
-                    is.close();
-                } catch (Throwable throwable1) {
-                    throwable.addSuppressed(throwable1);
-                }
-            }
-            throw throwable;
-        }
-    }
-
-    private static void readAndExtractDir(String subdir, Path outputDir, List<URL> extractedUrls) throws Exception {
-        List<FileEntry> entries = Loader.readResource(subdir + ".list", reader -> reader.lines().map(FileEntry::parseLine).toList());
-        Path subdirPath = outputDir.resolve(subdir);
-        for (FileEntry entry : entries) {
-            Path outputFile = subdirPath.resolve(entry.path);
-            Loader.checkAndExtractJar(subdir, entry, outputFile);
-            extractedUrls.add(outputFile.toUri().toURL());
-        }
-    }
-
-    private static void checkAndExtractJar(String subdir, FileEntry entry, Path outputFile) throws Exception {
-        if (!Files.exists(outputFile) || !Loader.checkIntegrity(outputFile, entry.hash())) {
-            Loader.extractJar(subdir, entry.path, outputFile);
-        }
-    }
-
-    private static void extractJar(String subdir, String jarPath, Path outputFile) throws IOException {
-        Files.createDirectories(outputFile.getParent());
-        InputStream input = Loader.class.getResourceAsStream("/META-INF/" + subdir + "/" + jarPath);
-        try {
-            if (input == null)
-                throw new IllegalStateException("Declared library " + jarPath + " not found");
-            Files.copy(input, outputFile, StandardCopyOption.REPLACE_EXISTING);
-            input.close();
-        } catch (Throwable throwable) {
-            if (input != null)
-                try {
-                    input.close();
-                } catch (Throwable throwable1) {
-                    throwable.addSuppressed(throwable1);
-                }
-            throw throwable;
-        }
-    }
-
-    private static boolean checkIntegrity(Path file, String expectedHash) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        InputStream output = Files.newInputStream(file);
-        try {
-            output.transferTo(new DigestOutputStream(OutputStream.nullOutputStream(), digest));
-            String actualHash = Util.byteToHex(digest.digest());
-            if (actualHash.equalsIgnoreCase(expectedHash)) {
-                output.close();
-                return true;
-            }
-
-            System.out.printf("Expected file %s to have hash %s, but got %s%n", file, expectedHash, actualHash);
-            output.close();
-        } catch (Throwable throwable) {
-            try {
-                output.close();
-            } catch (Throwable throwable1) {
-                throwable.addSuppressed(throwable1);
-            }
-            throw throwable;
-        }
-        return false;
-    }
-
-    @FunctionalInterface
-    private interface ResourceParser<T> {
-        T parse(BufferedReader param1BufferedReader) throws Exception;
-    }
-
-    private record FileEntry(String hash, String id, String path) {
-        public static FileEntry parseLine(String line) {
-            String[] fields = line.split("\t");
-            if (fields.length != 3)
-                throw new IllegalStateException("Malformed library entry: " + line);
-            return new FileEntry(fields[0], fields[1], fields[2]);
-        }
+    public static List<URL> getURLS() {
+        return Loader.URLS;
     }
 }
