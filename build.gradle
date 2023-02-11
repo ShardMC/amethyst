@@ -19,6 +19,9 @@ repositories {
 }
 
 dependencies {
+    shade 'commons-io:commons-io:2.11.0'
+    implementation 'commons-io:commons-io:2.11.0'
+
     shade 'org.ow2.asm:asm-util:9.4'
     implementation 'org.ow2.asm:asm-util:9.4'
 

@@ -1,0 +1,4 @@
+[11:24:46] [ServerMain/WARN]: Configuration conflict: there is more than one oshi.properties file on the classpath: [jar:file:/C:/Users/Theo/sources/jrepos/amethyst/libraries/oshi-core-6.2.2.jar!/oshi.properties, jar:file:/C:/Users/Theo/sources/jrepos/amethyst/versions/oshi-core-6.2.2.jar!/oshi.properties]
+[11:24:46] [ServerMain/WARN]: Configuration conflict: there is more than one oshi.architecture.properties file on the classpath: [jar:file:/C:/Users/Theo/sources/jrepos/amethyst/libraries/oshi-core-6.2.2.jar!/oshi.architecture.properties, jar:file:/C:/Users/Theo/sources/jrepos/amethyst/versions/oshi-core-6.2.2.jar!/oshi.architecture.properties]
+[11:24:51] [ServerMain/INFO]: Building unoptimized datafixer
+[11:24:53] [ServerMain/INFO]: You need to agree to the EULA in order to run the server. Go to eula.txt for more info.

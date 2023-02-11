@@ -9,7 +9,7 @@ import java.net.URLClassLoader;
 public class Amethyst {
 
     public static void main(String[] args) throws IOException {
-        Loader.prepare();
+        Loader.discover();
         Loader.extract();
 
         ClassLoader classLoader = new URLClassLoader(
